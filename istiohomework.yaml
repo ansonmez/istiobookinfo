@@ -32,6 +32,12 @@
         state: present
         src: ./templates/01ServiceMeshControlPlane.yaml
 
+    - name: Create a self-signed certificate and private key
+      command: openssl req -x509 -config cert.cfg -extensions req_ext -nodes -days 730 -newkey rsa:2048 -sha256 -keyout tls.key -out tls.crt
+
+    - name: secret for istio tls
+      command: oc create secret tls istio-ingressgateway-certs --cert tls.crt --key tls.key -n bookretail-istio-system
+
     - name: ServiceMeshMemberRoll
       k8s_raw:
         state: present
