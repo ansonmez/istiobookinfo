@@ -1,0 +1,10 @@
+---
+apiVersion: v1
+kind: Route
+metadata:
+  name: productpage
+spec:
+  to:
+    kind: Service
+    name: productpage
+

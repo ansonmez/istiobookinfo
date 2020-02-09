@@ -1,0 +1,371 @@
+---
+- name: Istio  Homework
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: create bookinfo bookretail-istio-system  project
+      k8s_raw:
+        state: present
+        src: ./templates/00newproject.yaml
+
+    - name: install bookinfo app
+      command: oc apply -f ./templates/bookinfo.yaml -n bookinfo
+
+    - name: expose route
+      k8s_raw:
+        state: present
+        src: ./templates/00exposebookinforoute
+        namespace: bookinfo
+
+    - name: Istio operator installation 
+      k8s_raw:
+        state: present 
+        src: ./templates/00redhat-operators-csc.yaml
+
+    - name: Istio subscription
+      k8s_raw:
+        state: present
+        src: ./templates/00subscription.yaml
+
+    - name: Service Mesh Control Plane 
+      k8s_raw:
+        state: present
+        src: ./templates/01ServiceMeshControlPlane.yaml
+
+    - name: ServiceMeshMemberRoll
+      k8s_raw:
+        state: present
+        src: ./templates/01ServiceMeshMemberRoll.yaml
+
+    - name: check label sidecar project
+      k8s_raw:
+        state: present
+        definition:
+          apiVersion: project.openshift.io/v1
+          kind: Project
+          metadata:
+            name: bookinfo
+          labels:
+            kiali.io/member-of: bookretail-istio-system
+            maistra.io/member-of: bookretail-istio-system
+
+    - name: details v1 sidecar
+      k8s_raw:
+        state: present
+        namespace: bookinfo
+        definition:
+          apiVersion: extensions/v1beta1
+          kind: Deployment
+          metadata:
+            name: details-v1
+          spec:
+            template:
+              metadata:
+                annotations:
+                  sidecar.istio.io/inject: "true"
+
+    - name: productpage  v1 sidecar
+      k8s_raw:
+        state: present
+        namespace: bookinfo
+        definition:
+          apiVersion: extensions/v1beta1
+          kind: Deployment
+          metadata:
+            name: productpage-v1
+          spec:
+            template:
+              metadata:
+                annotations:
+                  sidecar.istio.io/inject: "true"
+
+
+    - name: reviews  v1 sidecar
+      k8s_raw:
+        state: present
+        namespace: bookinfo
+        definition:
+          apiVersion: extensions/v1beta1
+          kind: Deployment
+          metadata:
+            name: reviews-v1
+          spec:
+            template:
+              metadata:
+                annotations:
+                  sidecar.istio.io/inject: "true"
+
+    - name: reviews  v2 sidecar
+      k8s_raw:
+        state: present
+        namespace: bookinfo
+        definition:
+          apiVersion: extensions/v1beta1
+          kind: Deployment
+          metadata:
+            name: reviews-v2
+          spec:
+            template:
+              metadata:
+                annotations:
+                  sidecar.istio.io/inject: "true"
+
+    - name: reviews  v3 sidecar
+      k8s_raw:
+        state: present
+        namespace: bookinfo
+        definition:
+          apiVersion: extensions/v1beta1
+          kind: Deployment
+          metadata:
+            name: reviews-v3
+          spec:
+            template:
+              metadata:
+                annotations:
+                  sidecar.istio.io/inject: "true"
+
+    - name: ratings  v3 sidecar
+      k8s_raw:
+        state: present
+        namespace: bookinfo
+        definition:
+          apiVersion: extensions/v1beta1
+          kind: Deployment
+          metadata:
+            name: ratings-v1
+          spec:
+            template:
+              metadata:
+                annotations:
+                  sidecar.istio.io/inject: "true"
+
+    - name: enable networkpolicy from all namespaces
+      k8s_raw:
+        state: present
+        namespace: bookinfo
+        definition:
+          kind: NetworkPolicy
+          apiVersion: networking.k8s.io/v1
+          metadata:
+            name: allow-from-all-namespaces
+          spec:
+            podSelector: {}
+            ingress:
+              - from:
+                  - namespaceSelector: {}
+            policyTypes:
+              - Ingress
+
+    - name: enable networkpolicy from router namespaces
+      k8s_raw:
+        state: present
+        namespace: bookinfo
+        definition:
+          kind: NetworkPolicy
+          apiVersion: networking.k8s.io/v1
+          metadata:
+            name: allow-from-ingress-namespace
+          spec:
+            podSelector: {}
+            ingress:
+              - from:
+                  - namespaceSelector:
+                      matchLabels:
+                        network-policy: global
+            policyTypes:
+              - Ingress
+         
+    - name: enable mtls for bookinfo namespace
+      k8s_raw:
+        state: present
+        namespace: bookretail-istio-system
+        definition:
+          apiVersion: authentication.istio.io/v1alpha1
+          kind: Policy
+          metadata:
+            name: default
+            namespace: bookinfo
+          spec:
+            peers:
+              - mtls:
+                  mode: STRICT
+
+    - name: create DestinationRules
+      k8s_raw:
+        state: present
+        namespace: bookinfo
+        definition:
+          apiVersion: networking.istio.io/v1alpha3
+          kind: DestinationRule
+          metadata:
+            name: productpage
+          spec:
+            host: productpage
+            trafficPolicy:
+              tls:
+                mode: ISTIO_MUTUAL
+            subsets:
+            - name: v1
+              labels:
+                version: v1
+
+    - name: create DestinationRules
+      k8s_raw:
+        state: present
+        namespace: bookinfo
+        definition:
+          apiVersion: networking.istio.io/v1alpha3
+          kind: DestinationRule
+          metadata:
+            name: reviews
+          spec:
+            host: reviews
+            trafficPolicy:
+              tls:
+                mode: ISTIO_MUTUAL
+            subsets:
+            - name: v1
+              labels:
+                version: v1
+            - name: v2
+              labels:
+                version: v2
+            - name: v3
+              labels:
+                version: v3
+
+    - name: create DestinationRules
+      k8s_raw:
+        state: present
+        namespace: bookinfo
+        definition:
+          apiVersion: networking.istio.io/v1alpha3
+          kind: DestinationRule
+          metadata:
+            name: ratings
+          spec:
+            host: ratings
+            trafficPolicy:
+              tls:
+                mode: ISTIO_MUTUAL
+            subsets:
+            - name: v1
+              labels:
+                version: v1
+            - name: v2
+              labels:
+                version: v2
+            - name: v2-mysql
+              labels:
+                version: v2-mysql
+            - name: v2-mysql-vm
+              labels:
+                version: v2-mysql-vm
+ 
+    - name: create DestinationRules
+      k8s_raw:
+        state: present
+        namespace: bookinfo
+        definition:
+          apiVersion: networking.istio.io/v1alpha3
+          kind: DestinationRule
+          metadata:
+            name: details
+          spec:
+            host: details
+            trafficPolicy:
+              tls:
+                mode: ISTIO_MUTUAL
+            subsets:
+            - name: v1
+              labels:
+                version: v1
+            - name: v2
+              labels:
+                version: v2
+  
+  
+    - name: create gateway 
+      k8s_raw:
+        state: present
+        namespace: bookinfo
+        definition:
+          apiVersion: networking.istio.io/v1alpha3
+          kind: Gateway
+          metadata:
+            name: bookinfo-gateway
+          spec:
+            selector:
+              istio: ingressgateway # use istio default controller
+            servers:
+            - port:
+                number: 443
+                name: https
+                protocol: HTTPS
+              tls:
+                mode: SIMPLE
+                privateKey: /etc/istio/ingressgateway-certs/tls.key
+                serverCertificate: /etc/istio/ingressgateway-certs/tls.crt
+              hosts:
+              - "*"
+
+    - name: create  virtualservice
+      k8s_raw:
+        state: present
+        namespace: bookinfo
+        definition:
+          apiVersion: networking.istio.io/v1alpha3
+          kind: VirtualService
+          metadata:
+            name: bookinfo
+          spec:
+            hosts:
+            - "*"
+            gateways:
+            - bookinfo-gateway
+            http:
+            - match:
+              - uri:
+                  exact: /productpage
+              - uri:
+                  exact: /login
+              - uri:
+                  exact: /logout
+              - uri:
+                  prefix: /api/v1/products
+              route:
+              - destination:
+                  host: productpage
+                  port:
+                    number: 9080
+
+
+    - name: create ingress route
+      k8s_raw:
+        state: present
+        namespace: bookinfo
+        definition:
+          apiVersion: route.openshift.io/v1
+          kind: Route
+          metadata:
+            annotations:
+              openshift.io/host.generated: 'true'
+            labels:
+              app: productpage
+            name: productpage-gateway
+          spec:
+            host: productpage.apps.cluster-5e5b.5e5b.sandbox824.opentlc.com
+            port:
+              targetPort: https
+            tls:
+              termination: passthrough
+            to:
+              kind: Service
+              name: istio-ingressgateway
+              weight: 100
+            wildcardPolicy: None
+ 
+#    - name: Create a Policy object for the deployments of the bookinfo namespace
+#
+#    - name: Create appropriate TLS certs, DestinationRules, VirtualService, etc for your bookinfo application.
