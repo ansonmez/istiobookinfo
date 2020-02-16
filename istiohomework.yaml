@@ -2,6 +2,8 @@
 - name: Istio  Homework
   hosts: localhost
   gather_facts: no
+  vars:
+    clusterdomain: apps.cluster-5e5b.5e5b.sandbox824.opentlc.com
   tasks:
     - name: create bookinfo bookretail-istio-system  project
       k8s_raw:
@@ -11,21 +13,72 @@
     - name: install bookinfo app
       command: oc apply -f ./templates/bookinfo.yaml -n bookinfo
 
-    - name: expose route
+### no need istio-gateway will be used
+#    - name: expose route
+#      k8s_raw:
+#        state: present
+#        src: ./templates/00exposebookinforoute
+#        namespace: bookinfo
+
+###  no need changed in ocp 4.3 
+#    - name: Istio operator installation  
+#      k8s_raw:
+#        state: present 
+#        src: ./templates/00redhat-operators-csc.yaml
+
+
+### no need operator dependency working
+#    - name: Istio subscription
+#      k8s_raw:
+#        state: present
+#        src: ./templates/00subscription.yaml
+#      register: csvx
+
+    - name: Install ServiceMesh operator
       k8s_raw:
         state: present
-        src: ./templates/00exposebookinforoute
-        namespace: bookinfo
+        namespace: openshift-operators
+        definition:
+          apiVersion: operators.coreos.com/v1alpha1
+          kind: Subscription
+          metadata:
+            name: servicemeshoperator
+            namespace: openshift-operators
+          spec:
+            channel: '1.0'
+            source: redhat-operators
+            name: servicemeshoperator
+            sourceNamespace: openshift-marketplace
+        wait: 
+        wait_timeout: 10
+        wait_condition:
+          reason: AllCatalogSourcesHealthy
 
-    - name: Istio operator installation 
-      k8s_raw:
-        state: present 
-        src: ./templates/00redhat-operators-csc.yaml
+    - name: pause for operator copy other namespaces 
+      pause:
+        minutes: 3
 
-    - name: Istio subscription
-      k8s_raw:
-        state: present
-        src: ./templates/00subscription.yaml
+    - name: Istio ready
+      k8s_facts:
+        api_version: operators.coreos.com/v1alpha1
+        kind: ClusterServiceVersion
+        name: servicemeshoperator.v1.0.7
+        namespace: bookretail-istio-system
+      register: csvstatus
+      until:  "csvstatus.resources[0].status.conditions[-1].phase == 'Succeeded'"     
+      retries: 5
+      delay: 10
+
+
+    - name: debug istio success
+      debug: 
+        msg: " {{ csvstatus.resources[0].status.phase }} "
+
+    - name: debug istio success
+      debug:
+        msg: " {{ csvstatus.resources[0].status.conditions[-1].phase }} "
+
+          
 
     - name: Service Mesh Control Plane 
       k8s_raw:
@@ -37,6 +90,7 @@
 
     - name: secret for istio tls
       command: oc create secret tls istio-ingressgateway-certs --cert tls.crt --key tls.key -n bookretail-istio-system
+      ignore_errors: yes
 
     - name: ServiceMeshMemberRoll
       k8s_raw:
@@ -363,7 +417,7 @@
               app: productpage
             name: productpage-gateway
           spec:
-            host: productpage.apps.cluster-5e5b.5e5b.sandbox824.opentlc.com
+            host: productpage.{{ clusterdomain }}
             port:
               targetPort: https
             tls:
@@ -374,6 +428,8 @@
               weight: 100
             wildcardPolicy: None
  
-#    - name: Create a Policy object for the deployments of the bookinfo namespace
-#
-#    - name: Create appropriate TLS certs, DestinationRules, VirtualService, etc for your bookinfo application.
+
+
+#### delete pods for sidecar restart
+#### delete istiogateway for certification
+####  curl to productpage.apps.cluster-5e5b.5e5b.sandbox824.opentlc.com 
